@@ -1,0 +1,155 @@
+pipeline {
+    agent any
+    
+    tools {
+        jdk 'Java17'
+        maven 'Maven3'
+    }
+    
+    environment {
+        APP_NAME = "ekart_shopping001"
+        RELEASE = "1.0.0"
+        PATH = "C:\\WINDOWS\\SYSTEM32;C:\\WINDOWS\\SYSTEM32;C:\\Program Files\\Docker\\Docker\\resources\\bin;${env.PATH}"
+        DOCKER_REGISTRY = 'https://hub.docker.com/repository/docker'
+        DOCKER_USER = "eagertolearn001"
+        DOCKER_PASS = 'dockerhub'
+        IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
+        BUILD_NUMBER = "700"
+        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+        SCANNER_HOME= tool 'sonarqube-scanner-latest'
+
+    }
+    
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Coding-s-Life/Ekart.git'
+            }
+        }
+        
+        stage('Compile') {
+            steps {
+                sh "mvn clean compile"
+            }
+        }
+        
+            stage('Sonarqube Analysis') {
+                steps {
+                    sh """
+                    "${SCANNER_HOME}\\bin\\sonar-scanner" ^
+                    -Dsonar.url=http://localhost:9000/ ^
+                    -Dsonar.login=squ_0e6866e1443d7f221f8952c6ca11da9433676015 ^
+                    -Dsonar.projectName=Ekart ^
+                    -Dsonar.java.binaries=. ^
+                    -Dsonar.projectKey=Ekart
+                    """
+            }
+        }
+
+        
+        // stage('Sonarqube Analysis') {
+        //     steps {
+        //         sh """
+        //             "\"${SCANNER_HOME}\\bin\\sonar-scanner\" \
+        //             -Dsonar.url=http://localhost:9000/ \
+        //             -Dsonar.login=squ_0e6866e1443d7f221f8952c6ca11da9433676015 \
+        //             -Dsonar.projectName=Ekart \
+        //             -Dsonar.java.binaries=. \
+        //             -Dsonar.projectKey=Ekart
+        //         """            
+        //     }
+        // }
+        
+        stage('Build') {
+            steps {
+                sh "mvn clean package -DskipTests=true"
+            }
+        }
+        
+        // stage('OWASP Dependency Check') {
+        //     steps {
+        //         dependencyCheck additionalArguments: '--scan target/', odcInstallation: 'DP'
+        //         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        //     }
+        // }
+        
+        // stage('Build Docker Image') {
+        //     steps {
+        //         script {
+        //             withDockerRegistry(credentialsId: 'docker_token', toolName: 'docker') {
+        //                 sh "docker build -t shopping-cart -f docker/Dockerfile ."
+        //                 sh "docker tag shopping-cart adijaiswal/shopping-cart:latest"
+        //             }
+        //         }
+        //     }
+        // }
+        
+        
+        stage('Build Docker Image') {
+            steps {
+			   // withCredentials([usernamePassword(credentialsId: 'docker_token', toolName: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    script {
+                        withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                           sh "docker build -t shopping-cart -f docker/Dockerfile ."
+                        
+                        
+                       // sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/Dockerfile ."
+                        //sh "docker tag shopping-cart adijaiswal/shopping-cart:latest"
+						//sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+						//sh "docker tag shopping-cart eagertolearn001/ekart_shopping001:latest"
+                        }
+                    }
+            }
+        }
+        
+        stage('TAG Docker Image') {
+            steps {
+			    //withCredentials([usernamePassword(credentialsId: 'docker_token', toolName: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                
+                    script {
+                        withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                        //sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/Dockerfile ."
+                        //sh "docker tag shopping-cart adijaiswal/shopping-cart:latest"
+						//sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+						//bat"docker tag shopping-cart adijaiswal/shopping-cart:latest"
+						sh "docker tag shopping-cart eagertolearn001/ekart_shopping001:latest"
+                    }
+                }
+            }
+        }
+        
+        stage('Push Docker Image') {
+            steps {
+			//withCredentials([usernamePassword(credentialsId: 'docker_token', toolName: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) { 
+                script {                    
+                    withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                  // sh "docker push adijaiswal/shopping-cart:latest"
+                   sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+                    }
+                }
+            }
+        }    
+        // stage('Push Docker Image') {
+        //     steps {
+        //         script {
+        //             withDockerRegistry(credentialsId: 'docker_token', toolName: 'docker') {
+        //                 sh "docker push adijaiswal/shopping-cart:latest"
+        //             }
+        //         }
+        //     }
+        // }
+        
+        stage('Deploy To Docker Container') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                        sh "docker stop shopping"
+                        sh "docker rm shopping"
+                        sh "docker run -d --name shopping -p 8070:8070 adijaiswal/shopping-cart:latest"
+                    }
+                }
+            }
+        }
+    }
+}
+
